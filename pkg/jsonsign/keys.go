@@ -215,3 +215,33 @@ func GenerateNewSecRing(secRing string) (keyId string, err error) {
 	}
 	return ent.PrimaryKey.KeyIdShortString(), nil
 }
+
+// GenerateNewSecRing creates a new secret ring file secRing, with
+// a new GPG identity. It returns the public keyId of that identity.
+// It returns an error if the file already exists.
+type IdentitySecring struct {
+	KeyId   string
+	Secring []byte
+}
+
+func GenerateNewSecRingStruct() (identity_secring *IdentitySecring, err error) {
+	identity_secring = &IdentitySecring{}
+	ent, err := NewEntity()
+	if err != nil {
+		return nil, fmt.Errorf("generating new identity: %v", err)
+	}
+	f := bytes.NewBuffer(identity_secring.Secring)
+
+	err = WriteKeyRing(f, openpgp.EntityList([]*openpgp.Entity{ent}))
+	if err != nil {
+		//f.Close()
+		return nil, fmt.Errorf("Could not write new key ring to byte stream in struct: %v", err)
+	}
+	// if err := f.Close(); err != nil {
+	// 	return "", fmt.Errorf("Could not close %v: %v", secRing, err)
+	// }
+	err = nil
+	identity_secring.KeyId = ent.PrimaryKey.KeyIdShortString()
+	identity_secring.Secring = f.Bytes()
+	return
+}

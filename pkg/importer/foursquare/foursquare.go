@@ -18,7 +18,6 @@ limitations under the License.
 package foursquare
 
 import (
-	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -105,38 +104,17 @@ func (im *imp) AccountSetupHTML(host *importer.Host) string {
 // A run is our state for a given run of the importer.
 type run struct {
 	*importer.RunContext
-	im          *imp
-	oauthConfig *oauth.Config
+	im *imp
 }
 
 func (r *run) token() string {
 	return r.RunContext.AccountNode().Attr(acctAttrAccessToken)
 }
 
-func (r *run) initRoot() error {
-	root := r.RootNode()
-	user := r.AccountNode().Attr("foursquareUser")
-	if user == "" {
-		return errors.New("The 'foursquareUser' attribute on the account node is empty.")
-	}
-	title := fmt.Sprintf("Foursquare (%s)", user)
-	return root.SetAttr("title", title)
-}
-
 func (im *imp) Run(ctx *importer.RunContext) error {
-	clientId, secret, err := ctx.Credentials()
-	if err != nil {
-		return err
-	}
 	r := &run{
 		RunContext: ctx,
 		im:         im,
-		oauthConfig: &oauth.Config{
-			ClientId:     clientId,
-			ClientSecret: secret,
-			AuthURL:      authURL,
-			TokenURL:     tokenURL,
-		},
 	}
 
 	if err := r.importCheckins(); err != nil {
@@ -193,8 +171,8 @@ func (r *run) importCheckins() error {
 		}
 
 		itemcount := len(resp.Response.Checkins.Items)
-		log.Printf("Importing %d checkins", itemcount)
-		if itemcount < 100 {
+		log.Printf("foursquare: importing %d checkins (offset %d)", itemcount, offset)
+		if itemcount < limit {
 			continueRequests = false
 		} else {
 			offset += itemcount
@@ -241,34 +219,39 @@ func (r *run) importPhotos(placeNode *importer.Object) error {
 		return err
 	}
 
-	photosNode.SetAttrs(
+	if err := photosNode.SetAttrs(
 		"title", "Photos of "+placeNode.Attr("title"),
-		"camliDefVis", "hide")
+		"camliDefVis", "hide"); err != nil {
+		return err
+	}
 
 	resp := photosList{}
 	if err := r.im.doAPI(r.Context, r.token(), &resp, "venues/"+placeNode.Attr("foursquareId")+"/photos", "limit", "10"); err != nil {
 		return err
 	}
 
-	itemcount := len(resp.Response.Photos.Items)
-	log.Printf("Importing %d photos for venue %s", itemcount, placeNode.Attr("title"))
-
+	var need []*photoItem
 	for _, photo := range resp.Response.Photos.Items {
 		attr := "camliPath:" + photo.Id + filepath.Ext(photo.Suffix)
-		if photosNode.Attr(attr) != "" {
-			log.Printf("Skipping photo, we already have it")
-			// Assume we have this photo already and don't need to refetch.
-			continue
+		if photosNode.Attr(attr) == "" {
+			need = append(need, photo)
 		}
-		url := photo.Prefix + "original" + photo.Suffix
-		ref := r.urlFileRef(url, "")
-		if ref == "" {
-			log.Printf("Error slurping photo: %s", url)
-			continue
-		}
-		err = photosNode.SetAttr(attr, ref)
-		if err != nil {
-			log.Printf("Error adding venue photo: %#v", err)
+	}
+
+	if len(need) > 0 {
+		log.Printf("foursquare: importing %d photos for venue %s", len(need), placeNode.Attr("title"))
+		for _, photo := range need {
+			attr := "camliPath:" + photo.Id + filepath.Ext(photo.Suffix)
+			url := photo.Prefix + "original" + photo.Suffix
+			log.Printf("foursquare: importing photo for venue %s: %s", placeNode.Attr("title"), url)
+			ref := r.urlFileRef(url, "")
+			if ref == "" {
+				log.Printf("Error slurping photo: %s", url)
+				continue
+			}
+			if err := photosNode.SetAttr(attr, ref); err != nil {
+				log.Printf("Error adding venue photo: %#v", err)
+			}
 		}
 	}
 

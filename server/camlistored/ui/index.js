@@ -75,7 +75,7 @@ cam.IndexPage = React.createClass({
 		var newURL = new goog.Uri(this.props.location.href);
 		this.baseURL_ = newURL.resolve(new goog.Uri(CAMLISTORE_CONFIG.uiRoot));
 
-		this.navigator_ = new cam.Navigator(this.props.eventTarget, this.props.location, this.props.history, true);
+		this.navigator_ = new cam.Navigator(this.props.eventTarget, this.props.location, this.props.history);
 		this.navigator_.onNavigate = this.handleNavigate_;
 
 		this.handleNavigate_(newURL);
@@ -486,7 +486,7 @@ cam.IndexPage = React.createClass({
 			searchSession: this.searchSession_,
 			searchURL: searchURL,
 			oldURL: oldURL,
-			getDetailURL: this.handleDetailURL_.bind(this),
+			getDetailURL: this.handleDetailURL_,
 			navigator: this.navigator_,
 			keyEventTarget: this.props.eventTarget,
 			width: this.props.availWidth,
